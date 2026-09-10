@@ -10,7 +10,7 @@ const {
 } = require('../db');
 const { lookupDevice } = require('../lib/deviceLookup');
 const { lookupIsp } = require('../lib/ispLookup');
-const { postToRequestTopic, isAdminGroupMessage } = require('../lib/adminGroup');
+const { postToRequestTopic, postToPaymentTopic, isAdminGroupMessage } = require('../lib/adminGroup');
 const { parseCredentials } = require('../lib/parseCredentials');
 const { getSetupInstructions, getSetupLabel, PLAYLIST_NAME } = require('../lib/setupInstructions');
 const { escapeHtml, escapeHtmlAttr, reply, sendHtml } = require('../lib/html');
@@ -60,10 +60,6 @@ function planLabel(tier) {
 
 function priceForTier(tier) {
   return PRICING[tier];
-}
-
-function payLinkForTier(tier) {
-  return process.env[`PAYLIO_LINK_${tier}`] || null;
 }
 
 function serverUrlLine() {
@@ -393,7 +389,7 @@ async function handleTrialCredentialReply(ctx, handoff) {
 }
 
 async function handleTrialWorking(ctx, session) {
-  await sendPaymentLink(ctx, session);
+  await requestPaymentLink(ctx, session);
 }
 
 async function handleTrialNotWorking(ctx, session) {
@@ -418,30 +414,60 @@ async function handleTrialNotWorking(ctx, session) {
   );
 }
 
-// ---- Payment (12-month plan) / paid credential handoff ---------------------
+// ---- Payment link request/reply (per-order, manual) / paid credential handoff
 
-async function sendPaymentLink(ctx, session) {
+async function requestPaymentLink(ctx, session) {
   updateSession(session.telegram_user_id, {
-    status: 'awaiting_payment',
-    step: 'awaiting_payment',
+    status: 'awaiting_payment_link',
+    step: 'awaiting_payment_link',
   });
-  const tier = session.plan_tier;
-  const link = payLinkForTier(tier);
-  const priceLabel = `${planLabel(tier)} — $${priceForTier(tier)}/yr`;
-  if (link) {
-    await reply(
-      ctx,
-      `Great news — here's your payment link for the <b>12-month plan</b>: <b>${priceLabel}</b>.\n\n<a href="${escapeHtmlAttr(link)}">Pay now</a>\n\nOnce you've completed payment, tap the button below.`,
-      paidKeyboard
-    );
+
+  const priceLabel = `${planLabel(session.plan_tier)} — $${priceForTier(session.plan_tier)}/yr`;
+  const adminText = [
+    `💰 <b>Payment Link</b> requested by ${username(ctx)}`,
+    '',
+    `<b>Plan:</b> ${priceLabel}`,
+    '',
+    `Reply to <b>this message</b> with the PayLio payment link for this order.`,
+  ].join('\n');
+
+  const sent = await postToPaymentTopic(ctx.telegram, adminText);
+  updateSession(session.telegram_user_id, { admin_message_id: sent ? sent.message_id : null });
+
+  if (sent) {
+    createAdminHandoff({
+      adminMessageId: sent.message_id,
+      kind: 'payment_link',
+      telegramUserId: session.telegram_user_id,
+      planTier: session.plan_tier,
+    });
   } else {
-    console.warn(`[onboard] PAYLIO_LINK_${tier} is not set in .env`);
-    await reply(
-      ctx,
-      `Your <b>12-month plan</b> is <b>${priceLabel}</b>.\n\nThe payment link isn't set up on our end yet — hang tight, our team will follow up directly. Once you've paid, tap the button below.`,
-      paidKeyboard
+    console.warn(
+      `[onboard] Admin group not configured — could not create a payment-link handoff for user ${session.telegram_user_id}. Set ADMIN_GROUP_CHAT_ID in .env.`
     );
   }
+
+  await reply(ctx, "Great — glad it's working! We're getting your payment link ready.\n\nYou'll hear from us here shortly.");
+}
+
+async function handlePaymentLinkReply(ctx, handoff) {
+  const link = ctx.message.text.trim();
+  if (!/^https?:\/\//i.test(link)) {
+    await reply(ctx, "Couldn't find a valid link in that reply.\n\nExpected a URL starting with <code>http://</code> or <code>https://</code>.");
+    return;
+  }
+
+  const priceLabel = `${planLabel(handoff.plan_tier)} — $${priceForTier(handoff.plan_tier)}/yr`;
+  await sendHtml(
+    ctx.telegram,
+    handoff.telegram_user_id,
+    `Great news — here's your payment link for the <b>12-month plan</b>: <b>${priceLabel}</b>.\n\n<a href="${escapeHtmlAttr(link)}">Pay now</a>\n\nOnce you've completed payment, tap the button below.`,
+    paidKeyboard
+  );
+  markAdminHandoffFulfilled(handoff.admin_message_id);
+  updateSession(handoff.telegram_user_id, { status: 'awaiting_payment', step: 'awaiting_payment' });
+
+  await reply(ctx, '✅ Payment link sent to the customer.');
 }
 
 async function handlePaymentConfirmed(ctx, session) {
@@ -548,6 +574,8 @@ async function handleAdminHandoffReply(ctx) {
     await handleDeviceReviewReply(ctx, handoff);
   } else if (handoff.kind === 'trial_credential') {
     await handleTrialCredentialReply(ctx, handoff);
+  } else if (handoff.kind === 'payment_link') {
+    await handlePaymentLinkReply(ctx, handoff);
   } else {
     await handleCredentialHandoffReply(ctx, handoff);
   }
@@ -664,6 +692,10 @@ function register(bot) {
 
       case 'handed_to_support':
         await reply(ctx, "For help with this, please message <b>@LumenTVSupportBot</b> — they'll pick up from here.");
+        break;
+
+      case 'awaiting_payment_link':
+        await reply(ctx, "We're getting your payment link ready.\n\nHang tight — this won't take long.");
         break;
 
       case 'awaiting_payment':

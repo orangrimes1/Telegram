@@ -20,7 +20,7 @@ Restart with `node index.js` (or `node index.js --only=onboard` / `--only=suppor
 - `data/devices.json` — 18-entry device compatibility DB across 4 categories (compatible+4K, compatible+non-4K, compatible-with-caveat/Google TV, not-compatible). Fuzzy lookup in `lib/deviceLookup.js` uses longest-alias-wins matching (fixed a real bug where a shorter generic alias like "google tv" could shadow a more specific one like "onn google tv"). Tested against 24 realistic inputs across all categories — all passing. The two Google TV entries' `note` field (sideloading/identity-verification risk) is now surfaced to customers automatically as a third message right after the compatibility confirmation, same tone/pattern as the ISP heads-up — doesn't block onboarding.
 - `data/isp-flags.json` — known-problem ISP list (currently just AT&T)
 - `lib/html.js` — shared HTML formatting helpers (`reply`, `sendHtml` default to `parse_mode: 'HTML'`; `escapeHtml`/`escapeHtmlAttr` for any customer- or admin-typed free text) — used by both bots, tested against adversarial input (`<script>`, raw `&`/`<`/`>`) with no breakage
-- `lib/adminGroup.js` — `postToRequestTopic` / `postToSupportTopic` route to the two admin-group forum topics independently
+- `lib/adminGroup.js` — `postToRequestTopic` / `postToSupportTopic` / `postToPaymentTopic` route to the three admin-group forum topics independently
 
 ### Onboarding bot (`bots/onboard.js`)
 Full flow end-to-end, matching spec section 5 plus later revisions:
@@ -48,16 +48,16 @@ HTML formatting throughout: bold on device names/plan labels/key terms, short li
 
 ### Admin group wiring
 - Group: `AdminLumen` (chat id `-1003905162486`)
-- Two forum topics, currently: Request = `22`, Support = `23` (topics were deleted and recreated once already mid-project — IDs updated accordingly; if this happens again, the temporary debug-logging pattern used both times is: add a `bot.use()` middleware in `bots/onboard.js` logging `ctx.chat.id` / `ctx.message.message_thread_id`, restart, read a test message from each topic in the log, then remove it)
+- Three forum topics, currently: Request = `22`, Support = `23`, Payment = `64` (Request/Support topics were deleted and recreated once already mid-project — IDs updated accordingly; if this happens again, the temporary debug-logging pattern used each time is: add a `bot.use()` middleware in `bots/onboard.js` logging `ctx.chat.id` / `ctx.message.message_thread_id`, restart, read a test message from each topic in the log, then remove it)
+- **Payment link handoff**: replaced the static per-tier PayLio links entirely with a manual per-order flow, same reply-to-message pattern as credentials. When a customer's trial works, the bot posts a request to the Payment topic (plan + price); the admin replies with the actual PayLio link; the bot validates it looks like a URL and forwards it to the customer as a clickable "Pay now" link. `admin_handoffs` now has a fourth `kind`: `payment_link` (alongside `device_review`, `trial_credential`, `credential`).
 
 ## Incomplete / outstanding
 
-- **`PAYLIO_LINK_1/2/3`** — empty in `.env`. Bot degrades gracefully (tells the customer the team will follow up directly) but no real payment can happen until these are set.
 - ~~`XTREAM_SERVER_URL` empty~~ — set to `cf.ocean1738.com`. Credential messages now show the real server address.
 - **Live end-to-end test in a real Telegram chat** — not yet completed successfully. A first attempt (replying to a trial-credential request in the Request topic) silently failed to forward — root cause was **data loss, not a code bug**: my own test-cleanup commands (`rm -f data/lumen.sqlite3*`) deleted the live bot's database while the live process was still running against it, wiping the pending `admin_handoffs` row before the reply could match it. Fixed: `db/index.js` now supports a `LUMEN_DB_PATH` env override so test scripts use an isolated throwaway path (or `:memory:`) and never touch the live file again; `handleAdminHandoffReply` now logs a `console.warn` on any unmatched reply instead of returning silently, so this class of issue is visible going forward. Live test needs to be redone from scratch since the prior session data is gone.
 - **Support bot "known issue" auto-reply flag** (spec §6: a flippable flag/pinned message so confirmed outages auto-reply instead of opening duplicate tickets) — not built. Scoped out as beyond "basic" for v1.
 - **Support bot ISP list / category-routing config** — explicitly deferred by the user this session ("don't touch it this round"). Still just AT&T in `data/isp-flags.json`.
-- **Git**: repo initialized (`git init` was run), `.gitignore` in place, but **no commits have been made yet** — everything is still just working-tree changes.
+- ~~Git: no commits~~ — initial commit `20e46f8` made. Note: `.gitignore` originally only excluded the exact `data/lumen.sqlite3` filename, missing its `-shm`/`-wal` sidecar files (which can hold session/credential fragments) — fixed to `data/lumen.sqlite3*` before this commit.
 - **Deferred per spec §9 (not v1)**: concurrent-stream enforcement on the Xtream panel, automated credential creation via panel API, AT&T/Cloudflare ISP block workaround, automated PayLio payment confirmation (webhook-equivalent).
 - **Webhooks / hosting**: still long polling only, as planned — switch to webhooks once a host (Railway/Render/Fly.io, or a VPS) is chosen.
 

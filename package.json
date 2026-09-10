@@ -1,0 +1,19 @@
+{
+  "name": "lumen-telegram-bots",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LUMEN onboarding and support Telegram bots",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "onboard": "node index.js --only=onboard",
+    "support": "node index.js --only=support"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "telegraf": "^4.16.3"
+  }
+}

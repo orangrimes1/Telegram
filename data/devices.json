@@ -1,0 +1,207 @@
+[
+  {
+    "id": "fire_tv_stick_4k_max",
+    "display_name": "Fire TV Stick 4K Max",
+    "aliases": ["fire tv stick 4k max", "firestick 4k max", "fire stick 4k max", "4k max", "amazon fire stick 4k max"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Fire OS",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "firestick_sideload"
+  },
+  {
+    "id": "fire_tv_stick_4k",
+    "display_name": "Fire TV Stick 4K",
+    "aliases": ["fire tv stick 4k", "firestick 4k", "fire stick 4k", "amazon fire stick 4k"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Fire OS",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "firestick_sideload"
+  },
+  {
+    "id": "fire_tv_cube",
+    "display_name": "Fire TV Cube",
+    "aliases": ["fire tv cube", "firetv cube", "amazon fire cube", "amazon cube"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Fire OS",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "firestick_sideload"
+  },
+  {
+    "id": "nvidia_shield",
+    "display_name": "NVIDIA Shield TV",
+    "aliases": ["nvidia shield", "shield tv", "nvidia shield tv", "shield pro", "shield tv pro", "nvidia shield pro"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Android TV",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "android_sideload"
+  },
+  {
+    "id": "fire_tv_stick_hd",
+    "display_name": "Fire TV Stick (HD)",
+    "aliases": [
+      "fire tv stick",
+      "firestick",
+      "fire stick",
+      "amazon fire stick",
+      "amazon firestick",
+      "fire tv stick lite",
+      "firestick lite",
+      "fire stick hd",
+      "fire tv stick hd"
+    ],
+    "compatible": true,
+    "4k_supported": false,
+    "platform": "Fire OS",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "firestick_sideload"
+  },
+  {
+    "id": "android_tv_box_generic",
+    "display_name": "Android TV box (generic)",
+    "aliases": [
+      "android tv box",
+      "android box",
+      "x96",
+      "x96 mini",
+      "x96 max",
+      "mxq",
+      "mxq pro",
+      "h96",
+      "generic android box",
+      "android tv stick",
+      "android box tv",
+      "android stick"
+    ],
+    "compatible": true,
+    "4k_supported": false,
+    "platform": "Android TV",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "android_sideload"
+  },
+  {
+    "id": "chromecast_google_tv",
+    "display_name": "Chromecast with Google TV",
+    "aliases": ["chromecast", "chromecast with google tv", "chromecast google tv", "google chromecast", "google tv"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Google TV",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "android_sideload",
+    "note": "Heads up — Google has been tightening sideloading requirements on certified <b>Google TV</b> devices this year, which could affect this device down the line.\n\nThere's nothing you need to do on your end. We're monitoring it, and your onboarding continues as normal."
+  },
+  {
+    "id": "google_tv_certified_generic",
+    "display_name": "Google TV-certified device (generic)",
+    "aliases": ["google tv certified", "google tv device", "onn google tv", "walmart onn", "onn 4k", "sony google tv"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Google TV",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "android_sideload",
+    "note": "Heads up — Google has been tightening sideloading requirements on certified <b>Google TV</b> devices this year, which could affect this device down the line.\n\nThere's nothing you need to do on your end. We're monitoring it, and your onboarding continues as normal."
+  },
+  {
+    "id": "android_phone",
+    "display_name": "Android phone",
+    "aliases": ["android phone", "samsung galaxy", "galaxy phone", "pixel", "google pixel", "oneplus"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Android",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "android_app_store_install"
+  },
+  {
+    "id": "iphone",
+    "display_name": "iPhone / iOS phone",
+    "aliases": ["iphone", "ios phone", "ios", "apple phone"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "iOS",
+    "app_to_install": "GSE Smart IPTV",
+    "setup_steps_ref": "ios_app_store_install"
+  },
+  {
+    "id": "windows_pc",
+    "display_name": "Windows PC",
+    "aliases": ["windows pc", "windows", "windows laptop", "pc", "laptop"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Windows",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "desktop_install"
+  },
+  {
+    "id": "mac",
+    "display_name": "Mac (macOS)",
+    "aliases": ["mac", "macbook", "macbook pro", "macbook air", "imac", "macos"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "macOS",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "desktop_install"
+  },
+  {
+    "id": "roku",
+    "display_name": "Roku",
+    "aliases": ["roku", "roku tv", "roku stick", "roku ultra", "roku express"],
+    "compatible": false,
+    "4k_supported": false,
+    "platform": "Roku OS",
+    "app_to_install": null,
+    "setup_steps_ref": null
+  },
+  {
+    "id": "apple_tv",
+    "display_name": "Apple TV",
+    "aliases": ["apple tv", "appletv", "apple tv 4k", "apple tv hd"],
+    "compatible": false,
+    "4k_supported": false,
+    "platform": "tvOS",
+    "app_to_install": null,
+    "setup_steps_ref": null
+  },
+  {
+    "id": "lg_smart_tv",
+    "display_name": "LG Smart TV (webOS)",
+    "aliases": ["lg smart tv", "lg tv", "webos", "web os tv", "webos tv", "lg webos"],
+    "compatible": false,
+    "4k_supported": false,
+    "platform": "webOS",
+    "app_to_install": null,
+    "setup_steps_ref": null
+  },
+  {
+    "id": "samsung_smart_tv",
+    "display_name": "Samsung Smart TV (Tizen)",
+    "aliases": ["samsung smart tv", "samsung tv", "tizen", "tizen tv", "samsung tizen"],
+    "compatible": false,
+    "4k_supported": false,
+    "platform": "Tizen",
+    "app_to_install": null,
+    "setup_steps_ref": null
+  },
+  {
+    "id": "vizio_smartcast",
+    "display_name": "Vizio SmartCast TV",
+    "aliases": ["vizio", "vizio smartcast", "vizio tv", "smartcast", "vizio smart tv"],
+    "compatible": false,
+    "4k_supported": false,
+    "platform": "SmartCast",
+    "app_to_install": null,
+    "setup_steps_ref": null
+  },
+  {
+    "id": "generic_smart_tv",
+    "display_name": "Smart TV (generic / native, non-sideloadable)",
+    "aliases": ["smart tv", "hisense", "hisense tv", "tcl", "tcl tv", "sony tv", "sony bravia", "native smart tv"],
+    "compatible": false,
+    "4k_supported": false,
+    "platform": "Native Smart TV",
+    "app_to_install": null,
+    "setup_steps_ref": null
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "id": "att",
+    "display_name": "AT&T",
+    "aliases": ["at&t", "att", "at and t", "at t"],
+    "note": "Heads up — <b>AT&amp;T</b> has occasionally blocked some of our traffic in the past, which can cause buffering or connection drops.\n\nThere's nothing you need to do on your end. We're tracking it, and your onboarding continues as normal."
+  }
+]

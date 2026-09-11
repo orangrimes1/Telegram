@@ -690,6 +690,24 @@ async function sendWelcome(ctx, session) {
 // ---- Wiring -----------------------------------------------------------------
 
 function register(bot) {
+  // The admin group must never run the customer-facing flow — gate it once,
+  // here, ahead of every other handler, rather than relying on each handler
+  // (bot.start, bot.on('text'), ...) to individually remember to check. Only
+  // a text reply to a pending handoff does anything; any other text from
+  // that chat (commands like /start, stray messages) is ignored outright.
+  // Button taps (callback_query updates have no ctx.message) pass through
+  // untouched — admin-facing buttons like the payment "unpaid" flag still
+  // need to work from inside the admin group.
+  bot.use(async (ctx, next) => {
+    if (isAdminGroupMessage(ctx) && ctx.message && ctx.message.text) {
+      if (ctx.message.reply_to_message) {
+        await handleAdminHandoffReply(ctx);
+      }
+      return;
+    }
+    return next();
+  });
+
   bot.start(async (ctx) => {
     const payload = (ctx.message.text.split(' ')[1] || '').trim();
 
@@ -712,13 +730,6 @@ function register(bot) {
   });
 
   bot.on('text', async (ctx) => {
-    if (isAdminGroupMessage(ctx)) {
-      if (ctx.message.reply_to_message) {
-        await handleAdminHandoffReply(ctx);
-      }
-      return;
-    }
-
     const session = ensureSession(ctx.from.id, ctx.from.username);
     const text = ctx.message.text.trim();
 

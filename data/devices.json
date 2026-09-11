@@ -2,7 +2,16 @@
   {
     "id": "fire_tv_stick_4k_max",
     "display_name": "Fire TV Stick 4K Max",
-    "aliases": ["fire tv stick 4k max", "firestick 4k max", "fire stick 4k max", "4k max", "amazon fire stick 4k max"],
+    "aliases": [
+      "fire tv stick 4k max",
+      "firestick 4k max",
+      "fire stick 4k max",
+      "4k max",
+      "amazon fire stick 4k max",
+      "fire tv stick 4k max 2nd gen",
+      "fire tv stick 4k max gen 2",
+      "fire tv stick 4k max 2023"
+    ],
     "compatible": true,
     "4k_supported": true,
     "platform": "Fire OS",
@@ -12,7 +21,14 @@
   {
     "id": "fire_tv_stick_4k",
     "display_name": "Fire TV Stick 4K",
-    "aliases": ["fire tv stick 4k", "firestick 4k", "fire stick 4k", "amazon fire stick 4k"],
+    "aliases": [
+      "fire tv stick 4k",
+      "firestick 4k",
+      "fire stick 4k",
+      "amazon fire stick 4k",
+      "fire tv stick 4k 2nd gen",
+      "fire tv stick 4k gen 2"
+    ],
     "compatible": true,
     "4k_supported": true,
     "platform": "Fire OS",
@@ -22,22 +38,21 @@
   {
     "id": "fire_tv_cube",
     "display_name": "Fire TV Cube",
-    "aliases": ["fire tv cube", "firetv cube", "amazon fire cube", "amazon cube"],
+    "aliases": [
+      "fire tv cube",
+      "firetv cube",
+      "amazon fire cube",
+      "amazon cube",
+      "fire cube",
+      "fire tv cube 3rd gen",
+      "fire tv cube gen 3",
+      "fire tv cube 2022"
+    ],
     "compatible": true,
     "4k_supported": true,
     "platform": "Fire OS",
     "app_to_install": "IPTV Smarters Pro",
     "setup_steps_ref": "firestick_sideload"
-  },
-  {
-    "id": "nvidia_shield",
-    "display_name": "NVIDIA Shield TV",
-    "aliases": ["nvidia shield", "shield tv", "nvidia shield tv", "shield pro", "shield tv pro", "nvidia shield pro"],
-    "compatible": true,
-    "4k_supported": true,
-    "platform": "Android TV",
-    "app_to_install": "IPTV Smarters Pro",
-    "setup_steps_ref": "android_sideload"
   },
   {
     "id": "fire_tv_stick_hd",
@@ -50,14 +65,82 @@
       "amazon firestick",
       "fire tv stick lite",
       "firestick lite",
-      "fire stick hd",
-      "fire tv stick hd"
+      "fire stick lite",
+      "fire tv stick hd",
+      "fire tv stick 3rd gen",
+      "fire tv stick gen 3",
+      "fire tv stick basic"
     ],
     "compatible": true,
     "4k_supported": false,
     "platform": "Fire OS",
     "app_to_install": "IPTV Smarters Pro",
     "setup_steps_ref": "firestick_sideload"
+  },
+  {
+    "id": "onn_4k_pro",
+    "display_name": "Onn 4K Pro Streaming Device",
+    "aliases": ["onn 4k pro", "walmart onn 4k pro", "onn pro", "onn google tv pro"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Google TV",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "google_tv_sideload",
+    "note": "Heads up — Google has been tightening sideloading requirements on certified <b>Google TV</b> devices this year, which could affect this device down the line.\n\nThere's nothing you need to do on your end. We're monitoring it, and your onboarding continues as normal."
+  },
+  {
+    "id": "onn_4k_plus",
+    "display_name": "Onn 4K Plus Streaming Device",
+    "aliases": ["onn 4k plus", "walmart onn 4k plus", "onn plus"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Google TV",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "google_tv_sideload",
+    "note": "Heads up — Google has been tightening sideloading requirements on certified <b>Google TV</b> devices this year, which could affect this device down the line.\n\nThere's nothing you need to do on your end. We're monitoring it, and your onboarding continues as normal."
+  },
+  {
+    "id": "onn_4k",
+    "display_name": "Onn 4K Streaming Device",
+    "aliases": ["onn 4k", "walmart onn 4k", "onn google tv 4k", "onn google tv"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Google TV",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "google_tv_sideload",
+    "note": "Heads up — Google has been tightening sideloading requirements on certified <b>Google TV</b> devices this year, which could affect this device down the line.\n\nThere's nothing you need to do on your end. We're monitoring it, and your onboarding continues as normal."
+  },
+  {
+    "id": "onn_2k",
+    "display_name": "Onn 2K/FHD Streaming Device",
+    "aliases": ["onn 2k", "onn fhd", "onn hd", "onn streaming device", "onn stick"],
+    "compatible": true,
+    "4k_supported": false,
+    "platform": "Google TV",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "google_tv_sideload",
+    "note": "Heads up — Google has been tightening sideloading requirements on certified <b>Google TV</b> devices this year, which could affect this device down the line.\n\nThere's nothing you need to do on your end. We're monitoring it, and your onboarding continues as normal."
+  },
+  {
+    "id": "nvidia_shield",
+    "display_name": "NVIDIA Shield TV",
+    "aliases": [
+      "nvidia shield",
+      "shield tv",
+      "nvidia shield tv",
+      "shield pro",
+      "shield tv pro",
+      "nvidia shield pro",
+      "shield tube",
+      "shield tv tube",
+      "nvidia shield tube",
+      "nvidia shield 2019"
+    ],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Android TV",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "android_sideload"
   },
   {
     "id": "android_tv_box_generic",
@@ -74,7 +157,10 @@
       "generic android box",
       "android tv stick",
       "android box tv",
-      "android stick"
+      "android stick",
+      "beelink",
+      "tanix",
+      "t95"
     ],
     "compatible": true,
     "4k_supported": false,
@@ -85,23 +171,30 @@
   {
     "id": "chromecast_google_tv",
     "display_name": "Chromecast with Google TV",
-    "aliases": ["chromecast", "chromecast with google tv", "chromecast google tv", "google chromecast", "google tv"],
+    "aliases": [
+      "chromecast",
+      "chromecast with google tv",
+      "chromecast google tv",
+      "google chromecast",
+      "chromecast 4k",
+      "chromecast hd"
+    ],
     "compatible": true,
     "4k_supported": true,
     "platform": "Google TV",
     "app_to_install": "IPTV Smarters Pro",
-    "setup_steps_ref": "android_sideload",
+    "setup_steps_ref": "google_tv_sideload",
     "note": "Heads up — Google has been tightening sideloading requirements on certified <b>Google TV</b> devices this year, which could affect this device down the line.\n\nThere's nothing you need to do on your end. We're monitoring it, and your onboarding continues as normal."
   },
   {
     "id": "google_tv_certified_generic",
     "display_name": "Google TV-certified device (generic)",
-    "aliases": ["google tv certified", "google tv device", "onn google tv", "walmart onn", "onn 4k", "sony google tv"],
+    "aliases": ["google tv certified", "google tv device", "google tv", "sony google tv"],
     "compatible": true,
     "4k_supported": true,
     "platform": "Google TV",
     "app_to_install": "IPTV Smarters Pro",
-    "setup_steps_ref": "android_sideload",
+    "setup_steps_ref": "google_tv_sideload",
     "note": "Heads up — Google has been tightening sideloading requirements on certified <b>Google TV</b> devices this year, which could affect this device down the line.\n\nThere's nothing you need to do on your end. We're monitoring it, and your onboarding continues as normal."
   },
   {
@@ -123,6 +216,26 @@
     "platform": "iOS",
     "app_to_install": "GSE Smart IPTV",
     "setup_steps_ref": "ios_app_store_install"
+  },
+  {
+    "id": "ipad",
+    "display_name": "iPad",
+    "aliases": ["ipad", "ipad pro", "ipad air", "ipad mini", "apple tablet"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "iPadOS",
+    "app_to_install": "GSE Smart IPTV",
+    "setup_steps_ref": "ios_app_store_install"
+  },
+  {
+    "id": "android_tablet",
+    "display_name": "Android Tablet",
+    "aliases": ["android tablet", "samsung tab", "samsung tablet", "galaxy tab"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Android",
+    "app_to_install": "IPTV Smarters Pro",
+    "setup_steps_ref": "android_app_store_install"
   },
   {
     "id": "windows_pc",
@@ -147,7 +260,18 @@
   {
     "id": "roku",
     "display_name": "Roku",
-    "aliases": ["roku", "roku tv", "roku stick", "roku ultra", "roku express"],
+    "aliases": [
+      "roku",
+      "roku tv",
+      "roku stick",
+      "roku streaming stick",
+      "roku streaming stick plus",
+      "roku ultra",
+      "roku express",
+      "roku express 4k",
+      "roku premiere",
+      "roku 4k"
+    ],
     "compatible": false,
     "4k_supported": false,
     "platform": "Roku OS",
@@ -157,7 +281,16 @@
   {
     "id": "apple_tv",
     "display_name": "Apple TV",
-    "aliases": ["apple tv", "appletv", "apple tv 4k", "apple tv hd"],
+    "aliases": [
+      "apple tv",
+      "appletv",
+      "apple tv 4k",
+      "apple tv hd",
+      "apple tv 4k 2nd gen",
+      "apple tv 4k 3rd gen",
+      "apple tv 4k gen 2",
+      "apple tv 4k gen 3"
+    ],
     "compatible": false,
     "4k_supported": false,
     "platform": "tvOS",

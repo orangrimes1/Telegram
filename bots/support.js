@@ -1,5 +1,5 @@
 const { Markup } = require('telegraf');
-const { getSession } = require('../db');
+const { getSession, updateSession } = require('../db');
 const { postToSupportTopic, isAdminGroupMessage } = require('../lib/adminGroup');
 const { escapeHtml, reply } = require('../lib/html');
 
@@ -214,6 +214,21 @@ function register(bot) {
   bot.action('sup_resolved_yes', async (ctx) => {
     await ctx.answerCbQuery();
     conversations.delete(ctx.from.id);
+
+    // Closing the loop: if they were sent here because their trial wasn't
+    // working, resolving it here shouldn't leave them stranded — hand them
+    // back to onboarding via a deep link instead of a dead end.
+    const onboardingSession = getSession(ctx.from.id);
+    if (onboardingSession && onboardingSession.status === 'handed_to_support') {
+      updateSession(ctx.from.id, { status: 'trial_issue_resolved', step: 'trial_issue_resolved' });
+      await reply(
+        ctx,
+        "Glad that's fixed! Since that was blocking your trial, let's pick up right where you left off.",
+        Markup.inlineKeyboard([Markup.button.url('Continue setup', 'https://t.me/LumenOnboardingBot?start=resume')])
+      );
+      return;
+    }
+
     await reply(ctx, "Glad that's fixed! Message us again anytime if something else comes up.");
   });
 

@@ -42,13 +42,13 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS admin_handoffs (
     admin_message_id  INTEGER PRIMARY KEY,
-    kind              TEXT NOT NULL DEFAULT 'credential', -- 'credential' | 'device_review'
+    kind              TEXT NOT NULL DEFAULT 'credential', -- 'credential' | 'trial_credential' | 'payment_link'
     telegram_user_id  INTEGER NOT NULL,
     plan_tier         INTEGER,
     device_key        TEXT,
     device_display_name TEXT,
     raw_device_input  TEXT,
-    device_slot_index INTEGER, -- null = device 1 (legacy top-level session columns); 2/3 = an extra device in devices_json
+    device_slot_index INTEGER, -- unused (no more device-review handoffs); kept for schema stability
     needs_walkthrough INTEGER NOT NULL DEFAULT 0,
     status            TEXT NOT NULL DEFAULT 'pending',
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
@@ -86,6 +86,48 @@ function ensureSession(telegramUserId, telegramUsername) {
   db.prepare(`
     INSERT INTO onboarding_sessions (telegram_user_id, telegram_username, step, status)
     VALUES (?, ?, 'new', 'active')
+  `).run(telegramUserId, telegramUsername || null);
+  return getSession(telegramUserId);
+}
+
+// Plain /start always begins a brand new onboarding session — wipes any
+// prior in-progress state (device picks, plan tier, ISP, etc.) for this
+// Telegram user ID rather than resuming it. Only the support-bot resume
+// deep link (/start?start=resume) should pick up where a session left off,
+// via ensureSession/getSession instead of this.
+function resetSession(telegramUserId, telegramUsername) {
+  db.prepare(`
+    INSERT INTO onboarding_sessions (
+      telegram_user_id, telegram_username, step, status,
+      device_input, device_key, device_display_name, device_compatible,
+      device_4k_supported, device_platform, device_app_to_install,
+      device_setup_steps_ref, device_unmatched, recommend_firestick,
+      devices_json, pending_device_index, isp_input, isp_flagged,
+      plan_tier, awaiting_device_since, device_nudge_sent_at, admin_message_id
+    ) VALUES (?, ?, 'new', 'active', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL)
+    ON CONFLICT(telegram_user_id) DO UPDATE SET
+      telegram_username = excluded.telegram_username,
+      step = 'new',
+      status = 'active',
+      device_input = NULL,
+      device_key = NULL,
+      device_display_name = NULL,
+      device_compatible = NULL,
+      device_4k_supported = NULL,
+      device_platform = NULL,
+      device_app_to_install = NULL,
+      device_setup_steps_ref = NULL,
+      device_unmatched = 0,
+      recommend_firestick = 0,
+      devices_json = NULL,
+      pending_device_index = NULL,
+      isp_input = NULL,
+      isp_flagged = 0,
+      plan_tier = NULL,
+      awaiting_device_since = NULL,
+      device_nudge_sent_at = NULL,
+      admin_message_id = NULL,
+      updated_at = datetime('now')
   `).run(telegramUserId, telegramUsername || null);
   return getSession(telegramUserId);
 }
@@ -164,6 +206,7 @@ module.exports = {
   db,
   getSession,
   ensureSession,
+  resetSession,
   updateSession,
   findStaleAwaitingDevicePurchase,
   createAdminHandoff,

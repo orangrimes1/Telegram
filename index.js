@@ -15,6 +15,9 @@ async function main() {
     } else {
       const onboardBot = new Telegraf(process.env.ONBOARD_BOT_TOKEN);
       registerOnboardBot(onboardBot);
+      onboardBot.catch((err, ctx) => {
+        console.error(`[onboard] Unhandled error processing update ${ctx.update.update_id}:`, err);
+      });
       activeBots.push(onboardBot);
       // launch() doesn't resolve until the bot stops (it awaits the polling
       // loop internally) — don't await it, just catch fatal errors.
@@ -31,6 +34,9 @@ async function main() {
     } else {
       const supportBot = new Telegraf(process.env.SUPPORT_BOT_TOKEN);
       registerSupportBot(supportBot);
+      supportBot.catch((err, ctx) => {
+        console.error(`[support] Unhandled error processing update ${ctx.update.update_id}:`, err);
+      });
       activeBots.push(supportBot);
       supportBot.launch().catch((err) => {
         console.error('[support] bot crashed:', err.message);

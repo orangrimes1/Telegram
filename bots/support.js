@@ -1,43 +1,93 @@
 const { Markup } = require('telegraf');
-const { getSession, updateSession } = require('../db');
+const {
+  getSession,
+  updateSession,
+  createAdminHandoff,
+  getAdminHandoffByMessageId,
+  markAdminHandoffFulfilled,
+} = require('../db');
 const { postToSupportTopic, isAdminGroupMessage } = require('../lib/adminGroup');
-const { escapeHtml, reply } = require('../lib/html');
+const { escapeHtml, reply, sendHtml } = require('../lib/html');
+const { lookupDevice } = require('../lib/deviceLookup');
+const { SMARTERS_DOWNLOADER_CODE } = require('../lib/setupInstructions');
 
 // Per-user conversation state. Support chats are short synchronous
 // back-and-forths, not multi-day pauses like onboarding, so plain in-memory
 // state (lost on restart) is enough for v1 — no SQLite table needed.
 const conversations = new Map();
 
+// The three setup_steps_ref values that go through the Downloader + code +
+// Smarters Pro APK sideload mechanism (see lib/setupInstructions.js) — app
+// download issues on these get Downloader-specific troubleshooting instead
+// of the generic "check the app store" steps.
+const SIDELOAD_REFS = new Set(['firestick_sideload', 'android_sideload', 'google_tv_sideload']);
+
+const LOGIN_COMMON_CHECKS =
+  "First, double-check the basics: make sure <b>Xtream Codes Login</b> is selected (not M3U/URL), there's no typo or extra space in the server, username, or password (especially if you copy-pasted them), and your 24-hour trial hasn't expired.";
+
+function loginStepsForDevice(device) {
+  const app = device ? device.app_to_install : null;
+  let deviceStep;
+  if (app === 'GSE Smart IPTV') {
+    deviceStep =
+      'Open <b>GSE Smart IPTV</b>, delete the saved playlist, and re-add it via Xtream Codes Login with the same details.';
+  } else if (app === 'MyIPTV Player') {
+    deviceStep = 'Open <b>MyIPTV Player</b>, remove the existing login, and re-add it via Xtream Codes Login.';
+  } else {
+    // IPTV Smarters Pro covers Firestick/Android TV Stick, Phone (Android),
+    // and Desktop/Mac — also the fallback when the device couldn't be
+    // matched, since it's the most common app across devices.
+    deviceStep =
+      'Open <b>IPTV Smarters Pro</b>, delete the saved playlist, and re-add it using Xtream Codes Login — double-check the server URL, username, and password for typos or extra spaces.';
+  }
+  return `${LOGIN_COMMON_CHECKS}\n\n${deviceStep}\n\nDid that fix it?`;
+}
+
+function downloadStepsForDevice(device) {
+  const isSideload = device && SIDELOAD_REFS.has(device.setup_steps_ref);
+  if (isSideload) {
+    return `Double-check you entered code <b>${SMARTERS_DOWNLOADER_CODE}</b> exactly in Downloader — try again after a minute if it says "file not found" (codes are occasionally rate-limited). Confirm <b>Apps from Unknown Sources</b> is still enabled in Developer Options, and that you have enough free storage.\n\nDid that fix it?`;
+  }
+  return "Confirm you're searching for the right app name — <b>IPTV Smarters Pro</b> (Android/PC), <b>GSE Smart IPTV</b> (iPhone/iPad), <b>MyIPTV Player</b> (Xbox). Check your internet connection and restart the store app if the download is stuck.\n\nDid that fix it?";
+}
+
+const BUFFERING_GENERIC_STEPS =
+  'Try moving your device closer to the router, or switching to a wired ethernet connection if your device supports it. Close any other apps or streams using bandwidth on your network.\n\nIs it still buffering?';
+
 const CATEGORIES = {
   server: {
     label: 'Server down',
-    questions: [{ key: 'device', prompt: 'Which device are you using?' }],
-    followUp: 'Try restarting the app. Is it working now?',
+    needsDevice: true,
+    devicePrompt: 'Which device are you using?',
+    followUp: () => 'Try restarting the app. Is it working now?',
     offerResolution: true,
     ispAware: true,
   },
   buffering: {
     label: 'Buffering',
-    questions: [{ key: 'device', prompt: 'Which device are you using?' }],
-    followUp: 'Try restarting the app. Is it still buffering?',
+    needsDevice: true,
+    devicePrompt: 'Which device are you using?',
+    followUp: () => BUFFERING_GENERIC_STEPS,
     offerResolution: true,
     ispAware: true,
   },
   login: {
     label: 'Login issue',
-    questions: [{ key: 'device', prompt: 'Which device are you using?' }],
-    followUp:
-      "Double-check there's no extra space before or after your <b>username</b> or <b>password</b>, then try again.\n\nDid that fix it?",
+    needsDevice: true,
+    devicePrompt: 'Which device are you using?',
+    followUp: loginStepsForDevice,
     offerResolution: true,
   },
   download: {
     label: 'App download issue',
-    questions: [{ key: 'device', prompt: 'Which device are you trying to install the app on?' }],
-    followUp: 'Try the Downloader steps again using the code we sent. Did that fix it?',
+    needsDevice: true,
+    devicePrompt: 'Which device are you trying to install the app on?',
+    followUp: downloadStepsForDevice,
     offerResolution: true,
   },
   other: {
     label: 'Other',
+    needsDevice: false,
     questions: [{ key: 'details', prompt: 'Please describe the issue.' }],
     offerResolution: false,
   },
@@ -58,6 +108,13 @@ const ispPatternKeyboard = Markup.inlineKeyboard([
   Markup.button.callback('On and off', 'sup_isp_pattern_intermittent'),
 ]);
 
+function deviceChoiceKeyboard(devices) {
+  return Markup.inlineKeyboard(
+    devices.map((d, i) => Markup.button.callback(d.display_name, `sup_device_${i}`)),
+    { columns: 1 }
+  );
+}
+
 function username(ctx) {
   if (ctx.from.username) return `@${ctx.from.username}`;
   return `${escapeHtml(ctx.from.first_name || 'customer')} (id ${ctx.from.id})`;
@@ -71,11 +128,57 @@ async function showCategoryMenu(ctx) {
   await reply(ctx, 'What can we help you with?', categoryKeyboard);
 }
 
+// Every device the customer has on file, in a uniform shape regardless of
+// whether it came from a single-device order (legacy top-level session
+// columns) or a multi-device order (devices_json array).
+function getKnownDevices(onboardingSession) {
+  if (!onboardingSession) return [];
+
+  if (onboardingSession.devices_json) {
+    try {
+      const arr = JSON.parse(onboardingSession.devices_json);
+      if (Array.isArray(arr) && arr.length) {
+        return arr.filter(Boolean).map((d, i) => ({
+          display_name: d.display_name || `Device ${i + 1}`,
+          app_to_install: d.app_to_install || null,
+          setup_steps_ref: d.setup_steps_ref || null,
+        }));
+      }
+    } catch {
+      // Malformed devices_json — fall through to the legacy fields below.
+    }
+  }
+
+  if (onboardingSession.device_display_name) {
+    return [
+      {
+        display_name: onboardingSession.device_display_name,
+        app_to_install: onboardingSession.device_app_to_install || null,
+        setup_steps_ref: onboardingSession.device_setup_steps_ref || null,
+      },
+    ];
+  }
+
+  return [];
+}
+
+// Sends the (possibly device-branched) follow-up and marks the
+// conversation as awaiting the Yes/No resolution tap. The text is cached
+// on state so a stray text message re-shows the same follow-up instead of
+// recomputing it.
+async function sendFollowUp(ctx, state, device) {
+  const category = CATEGORIES[state.categoryKey];
+  const text = category.followUp(device);
+  state.followUpText = text;
+  state.awaitingResolution = true;
+  await reply(ctx, text, resolutionKeyboard);
+}
+
 // Server down / Buffering, when the customer's onboarding session has a
-// flagged ISP: skip the generic device question (device is already known
-// from their onboarding record) and go straight to a targeted question,
-// then straight to a ticket — restarting the app doesn't fix a known ISP
-// issue, so there's no resolution offer on this path.
+// flagged ISP: skip the device question (the device doesn't change an ISP
+// diagnosis) and go straight to a targeted question, then straight to a
+// ticket — restarting the app doesn't fix a known ISP issue, so there's no
+// resolution offer on this path.
 async function startCategory(ctx, key) {
   const category = CATEGORIES[key];
   const onboardingSession = getSession(ctx.from.id);
@@ -87,6 +190,32 @@ async function startCategory(ctx, key) {
       `You're on <b>${escapeHtml(onboardingSession.isp_input)}</b>, which we've flagged for occasional connectivity issues.\n\nIs this happening consistently, or on and off?`,
       ispPatternKeyboard
     );
+    return;
+  }
+
+  if (category.needsDevice) {
+    const devices = getKnownDevices(onboardingSession);
+
+    if (devices.length === 1) {
+      const state = { categoryKey: key, answers: { device: devices[0].display_name } };
+      conversations.set(ctx.from.id, state);
+      await sendFollowUp(ctx, state, devices[0]);
+      return;
+    }
+
+    if (devices.length > 1) {
+      const state = { categoryKey: key, awaitingDeviceChoice: true, devices, answers: {} };
+      conversations.set(ctx.from.id, state);
+      await reply(ctx, 'Which device is this affecting?', deviceChoiceKeyboard(devices));
+      return;
+    }
+
+    // No device on file (e.g. they message support without ever finishing
+    // onboarding) — ask, and try to match their answer against the device
+    // database so they still get device-specific steps where possible.
+    const state = { categoryKey: key, awaitingDeviceText: true, answers: {} };
+    conversations.set(ctx.from.id, state);
+    await reply(ctx, category.devicePrompt);
     return;
   }
 
@@ -112,12 +241,43 @@ async function handleAnswer(ctx, state) {
   }
 
   if (category.offerResolution) {
-    state.awaitingResolution = true;
-    await reply(ctx, category.followUp, resolutionKeyboard);
+    await sendFollowUp(ctx, state, null);
   } else {
     await logTicket(ctx, state);
     conversations.delete(ctx.from.id);
   }
+}
+
+async function handleDeviceText(ctx, state) {
+  const rawText = ctx.message.text.trim();
+  const matched = lookupDevice(rawText);
+
+  state.answers.device = matched ? matched.display_name : rawText;
+  state.awaitingDeviceText = false;
+
+  await sendFollowUp(
+    ctx,
+    state,
+    matched ? { app_to_install: matched.app_to_install, setup_steps_ref: matched.setup_steps_ref } : null
+  );
+}
+
+async function handleDeviceChoice(ctx, index) {
+  const state = conversations.get(ctx.from.id);
+  if (!state || !state.awaitingDeviceChoice) {
+    await reply(ctx, 'Let’s start over. What can we help you with?', categoryKeyboard);
+    return;
+  }
+  const device = state.devices[index];
+  if (!device) {
+    await reply(ctx, 'Please tap one of the buttons above.', deviceChoiceKeyboard(state.devices));
+    return;
+  }
+
+  state.answers.device = device.display_name;
+  state.awaitingDeviceChoice = false;
+
+  await sendFollowUp(ctx, state, device);
 }
 
 async function handleIspPattern(ctx, patternLabel) {
@@ -166,6 +326,95 @@ async function logTicket(ctx, state) {
   await reply(ctx, "Thanks — we've flagged this to the team.\n\nThey'll follow up here shortly.");
 }
 
+// A diagnostic that didn't fix it needs a human, not another canned tip —
+// get their own description of what's happening, then post a reply-able
+// ticket to the Support topic so a reply from the team is forwarded
+// straight back to the customer (see handleSupportFixReply below).
+async function handleDescriptionAndEscalate(ctx, state) {
+  state.answers.description = ctx.message.text.trim();
+  state.awaitingDescription = false;
+  await logSupportFixTicket(ctx, state);
+  conversations.delete(ctx.from.id);
+}
+
+async function logSupportFixTicket(ctx, state) {
+  const category = CATEGORIES[state.categoryKey];
+  const onboardingSession = getSession(ctx.from.id);
+  const { description, ...otherAnswers } = state.answers;
+
+  const lines = [
+    `🎫 <b>Support Ticket — ${category.label}</b>`,
+    '',
+    `<b>Customer:</b> ${username(ctx)}`,
+    ...Object.entries(otherAnswers).map(
+      ([key, value]) => `<b>${escapeHtml(key[0].toUpperCase() + key.slice(1))}:</b> ${escapeHtml(value)}`
+    ),
+  ];
+
+  if (state.followUpText) {
+    lines.push('', '<b>Diagnostic steps already tried:</b>', state.followUpText);
+  }
+
+  if (onboardingSession) {
+    lines.push(
+      '',
+      `<b>Plan on file:</b> ${onboardingSession.plan_tier ? planLabel(onboardingSession.plan_tier) : 'unknown'}`,
+      `<b>Device on file:</b> ${onboardingSession.device_display_name || 'unknown'}`
+    );
+    if (onboardingSession.isp_input) {
+      const flaggedNote = onboardingSession.isp_flagged ? ' (flagged)' : '';
+      lines.push(`<b>ISP on file:</b> ${escapeHtml(onboardingSession.isp_input)}${flaggedNote}`);
+    }
+  }
+
+  lines.push(
+    '',
+    "<b>Customer's description:</b>",
+    escapeHtml(description),
+    '',
+    `Time: ${new Date().toISOString()}`,
+    '',
+    'Reply to <b>this message</b> with a fix — it will be forwarded to the customer as-is.'
+  );
+
+  const sent = await postToSupportTopic(ctx.telegram, lines.join('\n'));
+
+  if (sent) {
+    createAdminHandoff({
+      adminMessageId: sent.message_id,
+      kind: 'support_fix',
+      telegramUserId: ctx.from.id,
+      planTier: onboardingSession ? onboardingSession.plan_tier : null,
+      deviceDisplayName: state.answers.device || null,
+    });
+  } else {
+    console.warn(`[support] Admin group not configured — could not create a support_fix handoff for user ${ctx.from.id}.`);
+  }
+
+  await reply(ctx, "Thanks — we've flagged this to the team with your details.\n\nThey'll follow up here shortly.");
+}
+
+// The admin's reply is sent verbatim (HTML-escaped, not re-formatted) under
+// a fixed header — it needs to reliably reflect what they actually typed,
+// not the bot's guess at which words to bold.
+async function handleSupportFixReply(ctx, handoff) {
+  const fixText = ctx.message.text.trim();
+  await sendHtml(ctx.telegram, handoff.telegram_user_id, `<b>Update from the team:</b>\n\n${escapeHtml(fixText)}`);
+  markAdminHandoffFulfilled(handoff.admin_message_id);
+  await reply(ctx, '✅ Sent to the customer.');
+}
+
+async function handleAdminHandoffReply(ctx) {
+  const repliedTo = ctx.message.reply_to_message;
+  const handoff = getAdminHandoffByMessageId(repliedTo.message_id);
+  if (!handoff || handoff.status !== 'pending' || handoff.kind !== 'support_fix') {
+    // Not a message we're tracking for reply-based handling — could be a
+    // stray reply, or a second reply to an already-fulfilled ticket.
+    return;
+  }
+  await handleSupportFixReply(ctx, handoff);
+}
+
 function register(bot) {
   bot.start(async (ctx) => {
     conversations.delete(ctx.from.id);
@@ -173,21 +422,37 @@ function register(bot) {
   });
 
   bot.on('text', async (ctx) => {
-    if (isAdminGroupMessage(ctx)) return; // no admin-side flow for support tickets yet
+    if (isAdminGroupMessage(ctx)) {
+      if (ctx.message.reply_to_message) {
+        await handleAdminHandoffReply(ctx);
+      }
+      return;
+    }
 
     const state = conversations.get(ctx.from.id);
-    if (!state || state.awaitingResolution || state.ispAware) {
-      // Fresh conversation, or they typed instead of tapping the expected
-      // buttons — just re-show the relevant prompt.
-      if (state && state.awaitingResolution) {
-        await reply(ctx, CATEGORIES[state.categoryKey].followUp, resolutionKeyboard);
-        return;
-      }
-      if (state && state.ispAware) {
-        await reply(ctx, 'Please tap one of the buttons above.', ispPatternKeyboard);
-        return;
-      }
+    if (!state) {
       await showCategoryMenu(ctx);
+      return;
+    }
+
+    if (state.awaitingResolution) {
+      await reply(ctx, state.followUpText, resolutionKeyboard);
+      return;
+    }
+    if (state.awaitingDescription) {
+      await handleDescriptionAndEscalate(ctx, state);
+      return;
+    }
+    if (state.ispAware) {
+      await reply(ctx, 'Please tap one of the buttons above.', ispPatternKeyboard);
+      return;
+    }
+    if (state.awaitingDeviceChoice) {
+      await reply(ctx, 'Please tap one of the buttons above.', deviceChoiceKeyboard(state.devices));
+      return;
+    }
+    if (state.awaitingDeviceText) {
+      await handleDeviceText(ctx, state);
       return;
     }
 
@@ -199,6 +464,11 @@ function register(bot) {
       await ctx.answerCbQuery();
       await startCategory(ctx, key);
     });
+  });
+
+  bot.action(/^sup_device_(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    await handleDeviceChoice(ctx, Number(ctx.match[1]));
   });
 
   bot.action('sup_isp_pattern_consistent', async (ctx) => {
@@ -239,8 +509,9 @@ function register(bot) {
       await reply(ctx, 'Let’s start over. What can we help you with?', categoryKeyboard);
       return;
     }
-    await logTicket(ctx, state);
-    conversations.delete(ctx.from.id);
+    state.awaitingResolution = false;
+    state.awaitingDescription = true;
+    await reply(ctx, "Can you describe what's happening? The more detail, the faster we can help.");
   });
 }
 

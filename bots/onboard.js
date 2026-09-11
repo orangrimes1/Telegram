@@ -22,14 +22,16 @@ const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // hourly
 // The category picker is the single device-selection flow for everyone —
 // no more free-text model question or compatibility-check pipeline behind
 // it. Firestick/Android TV stick relies on a self-check note instead of
-// verification (see sendCategoryConfirmation); the other three categories
+// verification (see sendCategoryConfirmation); the other categories
 // always work regardless of specific model, so they resolve immediately.
+// No PS4/PS5 — there's no proper Xtream Codes app on PlayStation's store.
 const deviceCategoryKeyboard = Markup.inlineKeyboard(
   [
     Markup.button.callback('Firestick/Android TV stick', 'pick_stick'),
     Markup.button.callback('Phone', 'pick_phone'),
     Markup.button.callback('Desktop/Mac', 'pick_desktop'),
     Markup.button.callback('iPad/Tablet', 'pick_tablet'),
+    Markup.button.callback('Xbox', 'pick_xbox'),
   ],
   { columns: 1 }
 );
@@ -257,6 +259,18 @@ function syntheticAndroidTablet() {
   };
 }
 
+// Covers Xbox One and Series X/S the same way — no need to distinguish.
+function syntheticXbox() {
+  return {
+    key: 'xbox_direct',
+    display_name: 'Xbox',
+    four_k: 1,
+    platform: 'Xbox',
+    app_to_install: 'MyIPTV Player',
+    setup_steps_ref: 'xbox_install',
+  };
+}
+
 // null while resolving device 1 (pre-count, legacy fields); the device
 // index (2 or 3) once plan_tier is set and we're collecting extra devices.
 function currentDeviceIndex(session) {
@@ -266,9 +280,8 @@ function currentDeviceIndex(session) {
 async function askDeviceCategory(ctx, session) {
   const index = currentDeviceIndex(session);
   updateSession(session.telegram_user_id, { step: 'await_device_category' });
-  const prompt = index
-    ? `What will you be watching on for <b>device ${index}</b>?`
-    : 'What will you be watching on?';
+  const question = index ? `What will you be watching on for <b>device ${index}</b>?` : 'What will you be watching on?';
+  const prompt = `${question} We recommend a TV stick — it's portable and easy to set up anywhere.`;
   await reply(ctx, prompt, deviceCategoryKeyboard);
 }
 
@@ -829,6 +842,16 @@ function register(bot) {
       return;
     }
     await resolveDeviceCategory(ctx, session, syntheticDesktopMac());
+  });
+
+  bot.action('pick_xbox', async (ctx) => {
+    await ctx.answerCbQuery();
+    const session = getSession(ctx.from.id);
+    if (!session || session.step !== 'await_device_category') {
+      await reply(ctx, 'Please tap one of the buttons above.', deviceCategoryKeyboard);
+      return;
+    }
+    await resolveDeviceCategory(ctx, session, syntheticXbox());
   });
 
   bot.action('pick_tablet', async (ctx) => {

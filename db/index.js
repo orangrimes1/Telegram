@@ -42,7 +42,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS admin_handoffs (
     admin_message_id  INTEGER PRIMARY KEY,
-    kind              TEXT NOT NULL DEFAULT 'credential', -- 'credential' | 'trial_credential' | 'payment_link'
+    kind              TEXT NOT NULL DEFAULT 'credential', -- 'credential' | 'trial_credential' | 'payment_link' | 'support_fix'
     telegram_user_id  INTEGER NOT NULL,
     plan_tier         INTEGER,
     device_key        TEXT,

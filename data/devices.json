@@ -238,6 +238,16 @@
     "setup_steps_ref": "android_app_store_install"
   },
   {
+    "id": "xbox",
+    "display_name": "Xbox",
+    "aliases": ["xbox", "xbox one", "xbox series x", "xbox series s", "xbox series x/s"],
+    "compatible": true,
+    "4k_supported": true,
+    "platform": "Xbox",
+    "app_to_install": "MyIPTV Player",
+    "setup_steps_ref": "xbox_install"
+  },
+  {
     "id": "windows_pc",
     "display_name": "Windows PC",
     "aliases": ["windows pc", "windows", "windows laptop", "pc", "laptop"],

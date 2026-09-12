@@ -7,6 +7,7 @@ const {
   findStaleAwaitingDevicePurchase,
   createAdminHandoff,
   getAdminHandoffByMessageId,
+  getPendingHandoff,
   markAdminHandoffFulfilled,
 } = require('../db');
 const { lookupIsp } = require('../lib/ispLookup');
@@ -14,10 +15,24 @@ const { postToRequestTopic, postToPaymentTopic, isAdminGroupMessage } = require(
 const { parseCredentials } = require('../lib/parseCredentials');
 const { getSetupInstructions, getSetupLabel, PLAYLIST_NAME } = require('../lib/setupInstructions');
 const { escapeHtml, escapeHtmlAttr, reply, sendHtml } = require('../lib/html');
+const { createCooldown } = require('../lib/cooldown');
 
 const NUDGE_THRESHOLD_HOURS = 60; // ~2.5 days
 const ABANDON_THRESHOLD_HOURS = 24 * 14; // 2 weeks
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // hourly
+
+// Blocks rapid re-triggering of /start — without it, a customer (or a
+// script hitting the Bot API directly, since the flow is now all-button
+// and needs no typing) could complete the whole onboarding chain in well
+// under a second, flooding the admin group with duplicate trial/payment
+// requests. Silent, not a reply — an error message here is itself another
+// outbound call an abuser could keep triggering.
+const START_COOLDOWN_MS = 10_000;
+const startCooldown = createCooldown(START_COOLDOWN_MS);
+
+function ispLine(ispInput) {
+  return ispInput ? escapeHtml(ispInput) : 'not provided';
+}
 
 // The category picker is the single device-selection flow for everyone —
 // no more free-text model question or compatibility-check pipeline behind
@@ -166,7 +181,7 @@ function deviceListLabel(session) {
   return devices
     .map((d, i) => {
       const fourKNote = d.four_k === 0 ? ' (HD/FHD only, not 4K)' : '';
-      return `Device ${i + 1}: ${d.display_name || 'unknown'}${fourKNote}`;
+      return `Device ${i + 1}: ${d.display_name ? escapeHtml(d.display_name) : 'unknown'}${fourKNote}`;
     })
     .join('; ');
 }
@@ -404,6 +419,14 @@ async function requestTrialCredentials(ctx, session) {
     step: 'awaiting_trial_credentials',
   });
 
+  // Don't post a second admin notification if one's already pending for
+  // this user (e.g. from rapidly restarting onboarding) — the existing one
+  // still works, and the customer already got this same confirmation.
+  if (getPendingHandoff(session.telegram_user_id, 'trial_credential')) {
+    await reply(ctx, "Thanks — we're already setting up your 24-hour trial account.\n\nYou'll hear from us here shortly.");
+    return;
+  }
+
   const ispNote = session.isp_flagged ? ' ⚠️ <b>flagged ISP</b>' : '';
 
   const adminText = [
@@ -411,7 +434,7 @@ async function requestTrialCredentials(ctx, session) {
     '',
     `<b>Plan:</b> ${planLabel(session.plan_tier)}`,
     `<b>Devices:</b> ${deviceListLabel(session)}`,
-    `<b>ISP:</b> ${escapeHtml(session.isp_input) || 'not provided'}${ispNote}`,
+    `<b>ISP:</b> ${ispLine(session.isp_input)}${ispNote}`,
     '',
     `Reply to <b>this message</b> with the trial Xtream credentials, e.g.:`,
     '<code>username: john123</code>',
@@ -487,7 +510,7 @@ async function handleTrialNotWorking(ctx, session) {
       `⚠️ <b>Trial issue</b> reported by ${username(ctx)}`,
       '',
       `<b>Device(s):</b> ${deviceListLabel(session)}`,
-      `<b>ISP:</b> ${escapeHtml(session.isp_input) || 'not provided'}`,
+      `<b>ISP:</b> ${ispLine(session.isp_input)}`,
       '',
       'Customer was directed to the support bot — flagged here for context if they reach out.',
     ].join('\n')
@@ -501,6 +524,14 @@ async function requestPaymentLink(ctx, session) {
     status: 'awaiting_payment_link',
     step: 'awaiting_payment_link',
   });
+
+  // Don't post a second admin notification if one's already pending for
+  // this user — reachable more than once via the support-bot resume deep
+  // link as well as the normal trial-working path.
+  if (getPendingHandoff(session.telegram_user_id, 'payment_link')) {
+    await reply(ctx, "Thanks — we're already getting your payment link ready.\n\nYou'll hear from us here shortly.");
+    return;
+  }
 
   const priceLabel = `${planLabel(session.plan_tier)} — $${priceForTier(session.plan_tier)}/yr`;
   const adminText = [
@@ -585,7 +616,7 @@ async function handlePaymentConfirmed(ctx, session) {
     '',
     `<b>Plan:</b> ${planLabel(session.plan_tier)}`,
     `<b>Devices:</b> ${deviceListLabel(session)}`,
-    `<b>ISP:</b> ${escapeHtml(session.isp_input) || 'not provided'}${ispNote}`,
+    `<b>ISP:</b> ${ispLine(session.isp_input)}${ispNote}`,
     '',
     "Customer was sent the LUMEN group invite. Please confirm payment landed — if it didn't, flag it below.",
   ].join('\n');
@@ -709,6 +740,11 @@ function register(bot) {
   });
 
   bot.start(async (ctx) => {
+    if (startCooldown.isOnCooldown(ctx.from.id)) {
+      return;
+    }
+    startCooldown.record(ctx.from.id);
+
     const payload = (ctx.message.text.split(' ')[1] || '').trim();
 
     if (payload === 'resume') {
@@ -993,6 +1029,10 @@ function register(bot) {
   // sorted out.
   bot.action(/^mark_unpaid_(\d+)$/, async (ctx) => {
     await ctx.answerCbQuery();
+    // Defense in depth: this button is only ever attached to messages
+    // posted into the admin group, but don't rely solely on that — verify
+    // the tap itself came from there too.
+    if (!isAdminGroupMessage(ctx)) return;
     const telegramUserId = Number(ctx.match[1]);
     const session = getSession(telegramUserId);
     if (!session) {

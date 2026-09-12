@@ -195,6 +195,17 @@ function getAdminHandoffByMessageId(adminMessageId) {
   return db.prepare('SELECT * FROM admin_handoffs WHERE admin_message_id = ?').get(adminMessageId);
 }
 
+// Used to dedup admin-group notifications: if this user already has a
+// pending handoff of this kind, reuse it instead of posting a duplicate
+// (e.g. from rapidly restarting onboarding to re-trigger a trial request).
+function getPendingHandoff(telegramUserId, kind) {
+  return db
+    .prepare(
+      `SELECT * FROM admin_handoffs WHERE telegram_user_id = ? AND kind = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(telegramUserId, kind);
+}
+
 function markAdminHandoffFulfilled(adminMessageId) {
   db.prepare(`
     UPDATE admin_handoffs SET status = 'fulfilled', fulfilled_at = datetime('now')
@@ -211,5 +222,6 @@ module.exports = {
   findStaleAwaitingDevicePurchase,
   createAdminHandoff,
   getAdminHandoffByMessageId,
+  getPendingHandoff,
   markAdminHandoffFulfilled,
 };

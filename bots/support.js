@@ -4,12 +4,19 @@ const {
   updateSession,
   createAdminHandoff,
   getAdminHandoffByMessageId,
+  getPendingHandoff,
   markAdminHandoffFulfilled,
 } = require('../db');
 const { postToSupportTopic, isAdminGroupMessage } = require('../lib/adminGroup');
 const { escapeHtml, reply, sendHtml } = require('../lib/html');
 const { lookupDevice } = require('../lib/deviceLookup');
 const { SMARTERS_DOWNLOADER_CODE } = require('../lib/setupInstructions');
+const { createCooldown } = require('../lib/cooldown');
+
+// Blocks rapid re-triggering of /start for the same reason as the
+// onboarding bot — see bots/onboard.js.
+const START_COOLDOWN_MS = 10_000;
+const startCooldown = createCooldown(START_COOLDOWN_MS);
 
 // Per-user conversation state. Support chats are short synchronous
 // back-and-forths, not multi-day pauses like onboarding, so plain in-memory
@@ -319,7 +326,7 @@ async function logTicket(ctx, state) {
     lines.push(
       '',
       `<b>Plan on file:</b> ${onboardingSession.plan_tier ? planLabel(onboardingSession.plan_tier) : 'unknown'}`,
-      `<b>Device on file:</b> ${onboardingSession.device_display_name || 'unknown'}`
+      `<b>Device on file:</b> ${onboardingSession.device_display_name ? escapeHtml(onboardingSession.device_display_name) : 'unknown'}`
     );
     if (onboardingSession.isp_input) {
       const flaggedNote = onboardingSession.isp_flagged ? ' (flagged)' : '';
@@ -345,6 +352,14 @@ async function handleDescriptionAndEscalate(ctx, state) {
 }
 
 async function logSupportFixTicket(ctx, state) {
+  // Don't post a second reply-able ticket if one's already pending for
+  // this user (e.g. from rapidly restarting the support flow before the
+  // team has replied to the first one) — the existing one still works.
+  if (getPendingHandoff(ctx.from.id, 'support_fix')) {
+    await reply(ctx, "Thanks — we've already flagged this to the team.\n\nThey'll follow up here shortly.");
+    return;
+  }
+
   const category = CATEGORIES[state.categoryKey];
   const onboardingSession = getSession(ctx.from.id);
   const { description, ...otherAnswers } = state.answers;
@@ -366,7 +381,7 @@ async function logSupportFixTicket(ctx, state) {
     lines.push(
       '',
       `<b>Plan on file:</b> ${onboardingSession.plan_tier ? planLabel(onboardingSession.plan_tier) : 'unknown'}`,
-      `<b>Device on file:</b> ${onboardingSession.device_display_name || 'unknown'}`
+      `<b>Device on file:</b> ${onboardingSession.device_display_name ? escapeHtml(onboardingSession.device_display_name) : 'unknown'}`
     );
     if (onboardingSession.isp_input) {
       const flaggedNote = onboardingSession.isp_flagged ? ' (flagged)' : '';
@@ -423,6 +438,13 @@ async function handleSupportFixReply(ctx, handoff) {
 async function handleFixStillBroken(ctx, handoff) {
   await reply(ctx, "Sorry that didn't do it — we've flagged this to the team again. They'll follow up here.");
 
+  // Telegram doesn't disable a button after one tap, so this could be
+  // tapped repeatedly on the same message — don't reopen more than once
+  // while a reopened ticket is still pending a reply.
+  if (getPendingHandoff(handoff.telegram_user_id, 'support_fix')) {
+    return;
+  }
+
   const lines = [
     "⚠️ <b>Customer says this didn't work</b>",
     '',
@@ -476,6 +498,11 @@ function register(bot) {
   });
 
   bot.start(async (ctx) => {
+    if (startCooldown.isOnCooldown(ctx.from.id)) {
+      return;
+    }
+    startCooldown.record(ctx.from.id);
+
     conversations.delete(ctx.from.id);
     await showCategoryMenu(ctx);
   });
@@ -526,7 +553,11 @@ function register(bot) {
   bot.action(/^supportfix_ok_(\d+)$/, async (ctx) => {
     await ctx.answerCbQuery();
     const handoff = getAdminHandoffByMessageId(Number(ctx.match[1]));
-    if (!handoff) {
+    // Verify the tapping customer actually owns this ticket — these
+    // buttons are only ever sent to the customer's own chat, but don't
+    // rely solely on that; check ownership explicitly rather than trusting
+    // the callback_data's embedded id at face value.
+    if (!handoff || handoff.telegram_user_id !== ctx.from.id) {
       await reply(ctx, "Thanks! If anything else comes up, just message us again.");
       return;
     }
@@ -537,7 +568,7 @@ function register(bot) {
   bot.action(/^supportfix_bad_(\d+)$/, async (ctx) => {
     await ctx.answerCbQuery();
     const handoff = getAdminHandoffByMessageId(Number(ctx.match[1]));
-    if (!handoff) {
+    if (!handoff || handoff.telegram_user_id !== ctx.from.id) {
       await reply(ctx, "Sorry, I've lost track of this one — please message us again so we can help.");
       return;
     }

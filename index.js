@@ -2,6 +2,18 @@ require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const registerOnboardBot = require('./bots/onboard');
 const registerSupportBot = require('./bots/support');
+const { runDataRetentionSweep } = require('./db');
+
+const DATA_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000; // daily
+
+// Logs a count only, never the deleted rows themselves — see
+// runDataRetentionSweep for the actual retention windows.
+function runDataRetentionJob() {
+  const { sessionsDeleted, handoffsDeleted } = runDataRetentionSweep();
+  if (sessionsDeleted > 0 || handoffsDeleted > 0) {
+    console.log(`[retention] Deleted ${sessionsDeleted} onboarding session(s) and ${handoffsDeleted} admin handoff(s) past retention.`);
+  }
+}
 
 // Never log the full error object here — Telegraf's TelegramError carries
 // the original outgoing API call (method + payload, i.e. the message text)
@@ -63,6 +75,9 @@ async function main() {
     console.error('No bot tokens configured — set ONBOARD_BOT_TOKEN and/or SUPPORT_BOT_TOKEN in .env.');
     process.exit(1);
   }
+
+  runDataRetentionJob();
+  setInterval(runDataRetentionJob, DATA_RETENTION_INTERVAL_MS);
 }
 
 main().catch((err) => {

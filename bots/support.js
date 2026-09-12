@@ -6,6 +6,8 @@ const {
   getAdminHandoffByMessageId,
   getPendingHandoff,
   markAdminHandoffFulfilled,
+  getOutageFlag,
+  setOutageFlag,
 } = require('../db');
 const { postToSupportTopic, isAdminGroupMessage } = require('../lib/adminGroup');
 const { escapeHtml, reply, sendHtml } = require('../lib/html');
@@ -69,6 +71,7 @@ const CATEGORIES = {
     followUp: () => 'Try restarting the app. Is it working now?',
     offerResolution: true,
     ispAware: true,
+    outageAware: true,
   },
   buffering: {
     label: 'Buffering',
@@ -77,6 +80,7 @@ const CATEGORIES = {
     followUp: () => BUFFERING_GENERIC_STEPS,
     offerResolution: true,
     ispAware: true,
+    outageAware: true,
   },
   login: {
     label: 'Login issue',
@@ -195,6 +199,18 @@ async function sendFollowUp(ctx, state, device) {
 // resolution offer on this path.
 async function startCategory(ctx, key) {
   const category = CATEGORIES[key];
+
+  if (category.outageAware) {
+    const outage = getOutageFlag();
+    if (outage.active) {
+      await reply(
+        ctx,
+        `This is a known issue — ${escapeHtml(outage.description)}. We're on it, no need to open a ticket.`
+      );
+      return;
+    }
+  }
+
   const onboardingSession = getSession(ctx.from.id);
 
   if (category.ispAware && onboardingSession && onboardingSession.isp_flagged) {
@@ -491,6 +507,13 @@ function register(bot) {
     if (isAdminGroupMessage(ctx) && ctx.message && ctx.message.text) {
       if (ctx.message.reply_to_message) {
         await handleAdminHandoffReply(ctx);
+        return;
+      }
+      // /outage is the one legitimate non-reply command from the admin
+      // group — let it through to bot.command('outage', ...) below.
+      // Everything else non-reply from that chat is dropped here.
+      if (/^\/outage(?:@\S+)?\b/i.test(ctx.message.text)) {
+        return next();
       }
       return;
     }
@@ -505,6 +528,38 @@ function register(bot) {
 
     conversations.delete(ctx.from.id);
     await showCategoryMenu(ctx);
+  });
+
+  // Admin-only — gated both by the bot.use() middleware above (which drops
+  // every non-reply admin-group message except this one) and by an
+  // explicit isAdminGroupMessage check here, same defense-in-depth pattern
+  // as the other admin-only actions.
+  bot.command('outage', async (ctx) => {
+    if (!isAdminGroupMessage(ctx)) return;
+
+    const match = ctx.message.text.match(/^\/outage(?:@\S+)?\s+(on|off)(?:\s+"([^"]*)")?\s*$/i);
+    if (!match) {
+      await reply(ctx, 'Usage: /outage on "&lt;description&gt;" or /outage off');
+      return;
+    }
+
+    const mode = match[1].toLowerCase();
+    if (mode === 'off') {
+      setOutageFlag(false, null);
+      await reply(ctx, '✅ Outage flag turned OFF. Server down / Buffering back to normal.');
+      return;
+    }
+
+    const description = (match[2] || '').trim();
+    if (!description) {
+      await reply(ctx, 'Please include a description: /outage on "&lt;description&gt;"');
+      return;
+    }
+    setOutageFlag(true, description);
+    await reply(
+      ctx,
+      `⚠️ Outage flag turned ON: "${escapeHtml(description)}". Server down / Buffering will auto-reply instead of opening tickets.`
+    );
   });
 
   bot.on('text', async (ctx) => {

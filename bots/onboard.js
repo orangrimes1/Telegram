@@ -607,6 +607,9 @@ async function handlePaymentConfirmed(ctx, session) {
   updateSession(session.telegram_user_id, {
     status: 'completed',
     step: 'completed',
+    // Anchors the 12-month + 30-day data retention cutoff (see
+    // runDataRetentionSweep in db/index.js).
+    plan_start_date: new Date().toISOString(),
   });
 
   const ispNote = session.isp_flagged ? ' ⚠️ <b>flagged ISP</b>' : '';
@@ -1043,7 +1046,9 @@ function register(bot) {
       await reply(ctx, "Couldn't find that customer's session.");
       return;
     }
-    updateSession(telegramUserId, { status: 'awaiting_payment', step: 'awaiting_payment' });
+    // Walk back the retention anchor too — this customer isn't actually on
+    // a paid plan until "I've paid" is confirmed again for real.
+    updateSession(telegramUserId, { status: 'awaiting_payment', step: 'awaiting_payment', plan_start_date: null });
     await sendHtml(
       ctx.telegram,
       telegramUserId,

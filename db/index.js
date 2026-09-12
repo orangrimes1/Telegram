@@ -54,6 +54,15 @@ db.exec(`
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
     fulfilled_at      TEXT
   );
+
+  -- Single-row flag the support bot checks before running its normal
+  -- Server down / Buffering flow — see setOutageFlag/getOutageFlag.
+  CREATE TABLE IF NOT EXISTS outage_flag (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    active      INTEGER NOT NULL DEFAULT 0,
+    description TEXT,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Lightweight migration for columns added after a database already exists —
@@ -68,6 +77,7 @@ function ensureColumn(table, column, definition) {
 
 ensureColumn('onboarding_sessions', 'devices_json', 'TEXT');
 ensureColumn('onboarding_sessions', 'pending_device_index', 'INTEGER');
+ensureColumn('onboarding_sessions', 'plan_start_date', 'TEXT'); // set once, when payment completes — anchors the 12mo+30d retention cutoff
 ensureColumn('admin_handoffs', 'device_slot_index', 'INTEGER');
 
 function getSession(telegramUserId) {
@@ -213,6 +223,49 @@ function markAdminHandoffFulfilled(adminMessageId) {
   `).run(adminMessageId);
 }
 
+// Paid sessions are anchored to plan_start_date (12mo term + 30d grace);
+// sessions that never converted (no plan_start_date — abandoned trials,
+// no payment) have no subscription term to anchor to, so they use a
+// flat 90 days of inactivity instead. Deletes the matching admin_handoffs
+// rows too. Returns counts only — never logs the deleted rows themselves.
+function runDataRetentionSweep() {
+  const rows = db
+    .prepare(
+      `
+      SELECT telegram_user_id FROM onboarding_sessions
+      WHERE (plan_start_date IS NOT NULL AND plan_start_date <= datetime('now', '-12 months', '-30 days'))
+         OR (plan_start_date IS NULL AND updated_at <= datetime('now', '-90 days'))
+      `
+    )
+    .all();
+
+  if (rows.length === 0) {
+    return { sessionsDeleted: 0, handoffsDeleted: 0 };
+  }
+
+  const ids = rows.map((r) => r.telegram_user_id);
+  const placeholders = ids.map(() => '?').join(',');
+
+  const handoffsResult = db.prepare(`DELETE FROM admin_handoffs WHERE telegram_user_id IN (${placeholders})`).run(...ids);
+  const sessionsResult = db.prepare(`DELETE FROM onboarding_sessions WHERE telegram_user_id IN (${placeholders})`).run(...ids);
+
+  return { sessionsDeleted: sessionsResult.changes, handoffsDeleted: handoffsResult.changes };
+}
+
+function getOutageFlag() {
+  return db.prepare('SELECT * FROM outage_flag WHERE id = 1').get() || { id: 1, active: 0, description: null };
+}
+
+function setOutageFlag(active, description) {
+  db.prepare(
+    `
+    INSERT INTO outage_flag (id, active, description, updated_at)
+    VALUES (1, ?, ?, datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET active = excluded.active, description = excluded.description, updated_at = datetime('now')
+    `
+  ).run(active ? 1 : 0, description || null);
+}
+
 module.exports = {
   db,
   getSession,
@@ -224,4 +277,7 @@ module.exports = {
   getAdminHandoffByMessageId,
   getPendingHandoff,
   markAdminHandoffFulfilled,
+  runDataRetentionSweep,
+  getOutageFlag,
+  setOutageFlag,
 };

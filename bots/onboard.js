@@ -966,12 +966,16 @@ function register(bot) {
   bot.action(/^plan_([123])$/, async (ctx) => {
     await ctx.answerCbQuery();
     const session = getSession(ctx.from.id);
-    if (!session || session.step !== 'await_plan') {
-      await reply(
-        ctx,
-        'Please choose a number of devices using the buttons above.',
-        session ? planKeyboardFor(session) : planKeyboard
-      );
+    if (!session) {
+      // No row at all for this user — most commonly a stale message from
+      // before a session reset (DB path change, manual reset, etc.). The
+      // buttons on that old message can never work again since there's no
+      // session to resume; the only way forward is a fresh /start.
+      await reply(ctx, "This session's expired — send /start to begin again.");
+      return;
+    }
+    if (session.step !== 'await_plan') {
+      await reply(ctx, 'Please choose a number of devices using the buttons above.', planKeyboardFor(session));
       return;
     }
     const tier = Number(ctx.match[1]);

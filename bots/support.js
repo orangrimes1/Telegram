@@ -108,6 +108,13 @@ const ispPatternKeyboard = Markup.inlineKeyboard([
   Markup.button.callback('On and off', 'sup_isp_pattern_intermittent'),
 ]);
 
+function fixResolutionKeyboard(adminMessageId) {
+  return Markup.inlineKeyboard([
+    Markup.button.callback('That worked', `supportfix_ok_${adminMessageId}`),
+    Markup.button.callback('Still broken', `supportfix_bad_${adminMessageId}`),
+  ]);
+}
+
 function deviceChoiceKeyboard(devices) {
   return Markup.inlineKeyboard(
     devices.map((d, i) => Markup.button.callback(d.display_name, `sup_device_${i}`)),
@@ -395,13 +402,48 @@ async function logSupportFixTicket(ctx, state) {
 }
 
 // The admin's reply is sent verbatim (HTML-escaped, not re-formatted) under
-// a fixed header — it needs to reliably reflect what they actually typed,
-// not the bot's guess at which words to bold.
+// a fixed header — it needs to reliably reflect what they actually typed.
+// Attaches That worked / Still broken so the thread doesn't just dead-end
+// after one reply.
 async function handleSupportFixReply(ctx, handoff) {
   const fixText = ctx.message.text.trim();
-  await sendHtml(ctx.telegram, handoff.telegram_user_id, `<b>Update from the team:</b>\n\n${escapeHtml(fixText)}`);
+  await sendHtml(
+    ctx.telegram,
+    handoff.telegram_user_id,
+    `<b>Update from the team:</b>\n\n${escapeHtml(fixText)}`,
+    fixResolutionKeyboard(handoff.admin_message_id)
+  );
   markAdminHandoffFulfilled(handoff.admin_message_id);
   await reply(ctx, '✅ Sent to the customer.');
+}
+
+// Customer taps "Still broken" — reopen with a fresh reply-able ticket
+// instead of dead-ending, so another reply goes through the same
+// send-with-buttons cycle.
+async function handleFixStillBroken(ctx, handoff) {
+  await reply(ctx, "Sorry that didn't do it — we've flagged this to the team again. They'll follow up here.");
+
+  const lines = [
+    "⚠️ <b>Customer says this didn't work</b>",
+    '',
+    `<b>Customer:</b> ${username(ctx)}`,
+  ];
+  if (handoff.plan_tier) lines.push(`<b>Plan:</b> ${planLabel(handoff.plan_tier)}`);
+  if (handoff.device_display_name) lines.push(`<b>Device:</b> ${escapeHtml(handoff.device_display_name)}`);
+  lines.push('', 'Reply to <b>this message</b> with another fix — it will be forwarded to the customer as-is.');
+
+  const sent = await postToSupportTopic(ctx.telegram, lines.join('\n'));
+  if (sent) {
+    createAdminHandoff({
+      adminMessageId: sent.message_id,
+      kind: 'support_fix',
+      telegramUserId: handoff.telegram_user_id,
+      planTier: handoff.plan_tier,
+      deviceDisplayName: handoff.device_display_name,
+    });
+  } else {
+    console.warn(`[support] Admin group not configured — could not reopen support_fix handoff for user ${handoff.telegram_user_id}.`);
+  }
 }
 
 async function handleAdminHandoffReply(ctx) {
@@ -479,6 +521,27 @@ function register(bot) {
   bot.action(/^sup_device_(\d+)$/, async (ctx) => {
     await ctx.answerCbQuery();
     await handleDeviceChoice(ctx, Number(ctx.match[1]));
+  });
+
+  bot.action(/^supportfix_ok_(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const handoff = getAdminHandoffByMessageId(Number(ctx.match[1]));
+    if (!handoff) {
+      await reply(ctx, "Thanks! If anything else comes up, just message us again.");
+      return;
+    }
+    await reply(ctx, "Great — glad that fixed it! Thanks for confirming.");
+    await postToSupportTopic(ctx.telegram, `✅ ${username(ctx)} confirmed the fix worked. Ticket closed.`);
+  });
+
+  bot.action(/^supportfix_bad_(\d+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const handoff = getAdminHandoffByMessageId(Number(ctx.match[1]));
+    if (!handoff) {
+      await reply(ctx, "Sorry, I've lost track of this one — please message us again so we can help.");
+      return;
+    }
+    await handleFixStillBroken(ctx, handoff);
   });
 
   bot.action('sup_isp_pattern_consistent', async (ctx) => {
